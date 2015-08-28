@@ -1,0 +1,36 @@
+import socket,pickle,threading
+
+
+class Subscriber(threading.Thread):
+
+	def __init__(self,callback,host ='localhost',port = 50007):
+		self.callback = callback
+		self.host = host
+		self.port = port
+		self.keepGoing = True
+
+	#What to do when data is received
+	def data_callback(self,data):
+		self.callback(data) #This is set somewhere else
+
+	#Starts the socket and the thread
+	def start_subscription(self):
+		threading.Thread.__init__(self)
+
+		HOST = 'localhost'    # The remote host
+		PORT = self.port             # The same port as used by the server
+		self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		self.sock.connect((HOST, PORT))
+
+		self.start()
+
+	def run(self):
+		while self.keepGoing:
+			data = self.sock.recv(8192)
+			data =  pickle.loads(data)
+			self.data_callback(data)
+
+	#Closes te connection and the thread
+	def shutdown(self):
+		self.keepGoing = False
+		self.sock.close()

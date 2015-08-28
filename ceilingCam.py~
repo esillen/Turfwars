@@ -1,0 +1,205 @@
+from SimpleCV import *
+from SimpleCV.Shell import plot
+import math
+
+########global definitions########
+displayHeight = 600
+displayWidth = 800
+disp = Display(resolution = (displayWidth,displayHeight))
+
+#Finds the first working camera.
+#Tries number 1 first to avoid built-in cameras
+
+cam = Camera(1)
+
+
+
+
+
+#Returns the clicked color in the image provided
+def calibrate_color(image):
+	image.save(disp)
+	lbpos = None
+	print("Click the color you want")
+	while disp.isNotDone():
+		
+		up = disp.leftButtonUpPosition()
+		if up:
+			break
+		image.save(disp)
+
+	r,g,b = image[up[0],up[1]]
+	r = int(r)
+	g = int(g)
+	b = int(b)
+	col = (r,g,b)
+	return col
+
+#returns the box dragged on the image provided
+#Including some nice user-friendly interfacey stuff!
+def box_input(image):
+	lbpos = None
+
+	while disp.isNotDone():
+		newimg = image.copy()
+		up = disp.leftButtonUpPosition()
+		if lbpos == None:
+			lbpos = disp.leftButtonDownPosition()
+		elif up:
+			bb = disp.pointsToBoundingBox(lbpos,up)
+			newimg.drawRectangle(bb[0],bb[1],bb[2],bb[3])
+			break
+		else:
+			bb = disp.pointsToBoundingBox(lbpos,(disp.mouseX,disp.mouseY))
+			newimg.drawRectangle(bb[0],bb[1],bb[2],bb[3])
+		newimg.save(disp)
+		
+	return (bb[0],bb[1],bb[2],bb[3])
+	
+
+
+
+def calibrate_everything(numberOfRobots):
+	
+	#Configure playing field
+	print ("Drag a box around the play field now!")
+	img = cam.getImage()
+	playField = box_input(img)
+
+
+	print(
+	'''
+	#########
+
+	color calibration will now start
+	
+	#########
+	''')
+
+
+	while True:
+		#configure colors
+		positionColor = None
+		teamColors = [] #in team order
+
+		print("Place the position color in range of the camera now.")
+		img = cam.getImage()
+
+		positionColor = calibrate_color(img)
+		print ("position color: ", positionColor)
+
+
+		print("calibration of each team color will now begin")
+		for i in range(numberOfRobots):
+			print("Place the team color of team " + str(i + 1) + " under the camera now.")
+			img = cam.getImage()
+			teamColors.append(calibrate_color(img))
+			print "Team "+str(i)+" color:",teamColors[i]
+
+		#Display colors
+		img = cam.getImage()
+		img.save(disp)
+		img.dl().rectangle((0,0),((displayWidth/(len(teamColors)+2)),displayHeight/4),positionColor,filled=True)
+		for i in range(len(teamColors)):
+			img.dl().rectangle(((i+1)*displayWidth/(len(teamColors)+2),0),((displayWidth/(len(teamColors)+2)),displayHeight/4),teamColors[i],filled=True)
+		img.save(disp)
+
+
+
+		usrInput = raw_input("Happy with these colors? [y/n]")
+		if usrInput == 'y' or usrInput == 'Y':
+			return (playField,positionColor,teamColors)
+
+
+#This code first does some filtering.
+#Then it detects all the position blobs.
+#Then it finds the blobs of all the other colors and matches their positions with the position plobs.
+#This creates positions, id's and orientations for the number of robots specified.
+def detectRobots(playField,positionColor,teamColors):
+	numberOfRobots = len(teamColors)
+
+	#Look for the position blobs
+	img = cam.getImage()
+	img = img.crop(playField).copy()
+	blurred = img.blur(window = (10,10))
+	colorDistance = blurred.colorDistance(positionColor)
+	only_position_color = blurred-colorDistance
+	binarized = only_position_color.binarize()
+	inverted = binarized.invert()
+	blobs = inverted.findBlobs()
+
+	posblobcoords = []
+	if blobs:
+		for i in range(len(blobs)):
+
+			x = blobs[i].x
+			y = blobs[i].y
+			posblobcoords.append((x,y))
+			img.dl().circle((x,y),20,(255,255,255),filled = True)
+			if i>=numberOfRobots:
+				break
+
+	#stoopid way (easier to get robust I think)
+	#Another way would be to only search locally
+	#but that was harder to make robust in my experience.
+	robotPositions = [None]*numberOfRobots
+	for robotIndex in range(numberOfRobots):
+		color = teamColors[robotIndex]
+		colorDistance = blurred.colorDistance(color)
+		only_position_color = blurred-colorDistance
+		binarized = only_position_color.binarize()
+		inverted = binarized.invert()
+		blobs = inverted.findBlobs()
+		if blobs:
+			x = blobs[0].x
+			y = blobs[0].y
+			img.dl().circle((x,y),20,color,filled = True)
+			#find shortest distance to posmarker and return that point
+			actualPosition = find_closest_point((x,y),posblobcoords)
+			px =actualPosition[0]
+			py = actualPosition[1]
+			angle = math.atan2(py-y,x-px) #Because flipped coordinate system
+			angle = math.degrees(angle)
+			robotPositions[robotIndex]=(float(px),float(py),float(angle))
+
+	#img.save(disp)
+
+	return robotPositions
+
+#Helper function to find the closest point in a list listOfPoints from a point point.
+def find_closest_point(point,listOfPoints):
+	x = point[0]
+	y = point[1]
+	currx = 0
+	curry = 0
+	mindist = 100000000000 #some big number...
+	for pt in listOfPoints:
+		px = pt[0]
+		py = pt[1]
+		xdiff = x-px
+		ydiff = y-py
+		dist = math.sqrt(xdiff*xdiff + ydiff*ydiff)
+		if dist<mindist:
+			mindist = dist
+			currx = px
+			curry = py
+
+	return (currx,curry)
+
+
+
+
+	
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+

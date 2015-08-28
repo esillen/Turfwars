@@ -1,0 +1,67 @@
+import socket,threading,pickle
+
+class Client():
+	def __init__(self,connection,id):
+		self.connection = connection
+		self.id = id
+		self.alive = True
+
+
+	def sendall(self,data):
+		if self.alive:
+			try:
+				self.connection.sendall(data)
+			except:
+				self.connection.close()
+				self.alive = False
+
+	def close(self):
+		try:
+			self.connection.close()
+		except:
+			pass #not much to do, socket already closed.
+
+class Publisher(threading.Thread):
+	def __init__(self,port = 50007):
+		threading.Thread.__init__(self)
+		self.port = port
+		self.keepGoing = True
+		self.clients = []
+
+	def run(self):
+		HOST = ''
+		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		#s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		print("open on port " + str(self.port))
+		s.bind((HOST, self.port))
+		s.listen(4)
+		index = 0
+		while self.keepGoing:
+			conn, addr = s.accept()
+			print 'Connected by', addr
+			self.clients.append(Client(conn,index))
+			index+=1
+
+	#Publishes the data.
+	#Warning! You need to read the entire data on the other side to unpickle properly
+	def publish(self,toPublish):
+		for client in self.clients:
+			client.sendall(pickle.dumps(toPublish))
+
+	#Closes the thread and the connection
+	def shutdown(self):
+		self.keepGoing = False
+		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		s.connect(('localhost', self.port))
+		for client in self.clients:
+			client.close()
+		s.close()
+
+
+
+
+
+
+
+
+
